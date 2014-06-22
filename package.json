@@ -1,0 +1,18 @@
+{
+	"name": "chrome.httpServer",
+	"version": "0.1.0",
+	"devDependencies": {
+		"coffee-script": "*",
+		"grunt": "*",
+		"grunt-contrib-copy": "*",
+		"grunt-contrib-coffee": "*",
+		"grunt-contrib-uglify": "*",
+		"grunt-contrib-watch": "*",
+		"grunt-contrib-clean": "*"
+	},
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/SEIAROTg/chrome.httpServer.git"
+	}
+}
