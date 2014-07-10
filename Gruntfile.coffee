@@ -40,14 +40,16 @@ module.exports = (grunt) ->
 		copy:
 			manifest:
 				files: [
-					expand: false
-					src: 'demoApp/manifest.json'
+					expand: true
+					cwd: 'demoApp/'
+					src: 'manifest.json'
 					dest: 'dest/demoApp/'
 				]
 			lib:
 				files: [
-					expand: false
-					src: 'dest/chrome.httpServer.js'
+					expand: true
+					cwd: 'dest/'
+					src: 'chrome.httpServer.js'
 					dest: 'dest/demoApp/'
 				]
 	
