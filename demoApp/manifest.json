@@ -6,6 +6,7 @@
 	"app": {
 		"background": {
 			"scripts": [
+				"chrome.httpServer.js",
 				"main.js"
 			]
 		}
