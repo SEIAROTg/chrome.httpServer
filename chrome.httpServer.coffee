@@ -119,7 +119,7 @@ class _http_response
 	_this = {}
 
 	constructor: (@socketId, @onReceive) ->
-		`_this = this`
+		_this = this
 		headWritten = false
 
 	writeHead: (statusCode, header, reasonPhrase) ->
@@ -246,4 +246,4 @@ class _chrome_httpServer
 				return false
 
 
-`chrome.httpServer = _chrome_httpServer`
+chrome.httpServer = _chrome_httpServer
