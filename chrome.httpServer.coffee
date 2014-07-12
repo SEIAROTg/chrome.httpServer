@@ -223,7 +223,7 @@ class _chrome_httpServer
 						if headerInfo.offset == HEADER_MAX_LEN
 							chrome.sockets.tcp.send socketId, 'HTTP/1.1 413 Entity Too Large', () ->
 								chrome.sockets.tcp.close socketId
-					else # headerLength[0] != 0
+					else # headerInfo.length != 0
 						req.onData info.data
 
 			chrome.sockets.tcp.onReceive.addListener onReceive
