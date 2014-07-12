@@ -116,10 +116,10 @@ class _http_request
 class _http_response
 
 	headWritten = false
-	self = {}
+	_this = {}
 
 	constructor: (@socketId, @onReceive) ->
-		`self = this`
+		`_this = this`
 		headWritten = false
 
 	writeHead: (statusCode, header, reasonPhrase) ->
@@ -147,7 +147,7 @@ class _http_response
 	end: (data) ->
 		if data?
 			@write data, () ->
-				self.end()
+				_this.end()
 		else
 			chrome.sockets.tcp.close @socketId
 			chrome.sockets.tcp.onReceive.removeListener @onReceive
