@@ -79,18 +79,17 @@ listen = (socketId, addr, port) ->
 				resolve ret
 
 
-# convert string to ArrayBuffer
-#
-# unsafe for multi-byte encoding, should use TextEncoder polyfill instead.
-# but TextEncoder has not been implemented in chrome yet
-string2binary = (string) ->
-	
-	buf = new ArrayBuffer string.length
-	bufv = new Uint8Array buf
-	len = string.length
-	for i in [0..len]
-		bufv[i] = string.charCodeAt(i)
-	return buf
+# add string support for chrome.sockets.tcp.send
+_send = chrome.sockets.tcp.send
+chrome.sockets.tcp.send = (socketId, data, callback=()->) ->
+	if typeof data == 'string' # if data is string, convert it to ArrayBuffer
+		blob = new Blob [data]
+		fileReader = new FileReader()
+		fileReader.onload = () ->
+			_send socketId, this.result, callback
+		fileReader.readAsArrayBuffer blob
+	else
+		_send socketId, data, callback
 
 
 # compare two array-like object A and B with offset and length limit
@@ -137,10 +136,10 @@ class _http_response
 				headerStr = headerStr.concat key + ': ' + value + '\r\n'
 			headerStr = headerStr.concat '\r\n'
 			
-			chrome.sockets.tcp.send @socketId, string2binary(headerStr), () ->
+			chrome.sockets.tcp.send @socketId, headerStr, () ->
 				headWritten = true
 
-	write: (data, callback=()->) ->
+	write: (data, callback) ->
 		if not headWritten
 			headWritten = true
 		chrome.sockets.tcp.send @socketId, data, callback
@@ -222,7 +221,7 @@ class _chrome_httpServer
 								++headerInfo.offset
 
 						if headerInfo.offset == HEADER_MAX_LEN
-							chrome.sockets.tcp.send socketId, string2binary('HTTP/1.1 413 Entity Too Large'), () ->
+							chrome.sockets.tcp.send socketId, 'HTTP/1.1 413 Entity Too Large', () ->
 								chrome.sockets.tcp.close socketId
 					else # headerLength[0] != 0
 						req.onData info.data
