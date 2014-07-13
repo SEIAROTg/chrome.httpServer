@@ -122,10 +122,13 @@ class _http_response
 		_this = this
 		headWritten = false
 
-	writeHead: (statusCode, header, reasonPhrase) ->
+	writeHead: (statusCode, header, reasonPhrase, callback) ->
 		if headWritten
 			throw Error "HTTP header has already been written"
 		else
+			if typeof reasonPhrase == 'function'
+				callback = reasonPhrase
+				reasonPhrase = null
 			if not reasonPhrase?
 				if statusCode in REASON_PHRASE
 					reasonPhrase = REASON_PHRASE[statusCode]
@@ -138,6 +141,8 @@ class _http_response
 			
 			chrome.sockets.tcp.send @socketId, headerStr, () ->
 				headWritten = true
+				if callback?
+					callback()
 
 	write: (data, callback) ->
 		if not headWritten
