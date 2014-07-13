@@ -192,9 +192,9 @@ class _chrome_httpServer
 							
 							if compare(data, HEADER_END, i, 0, HEADER_END_LEN) # header ends
 								
-								headerInfo.length = headerInfo.offset + 1
+								headerInfo.length = headerInfo.offset
 
-								headerStr = String.fromCharCode.apply(null, headerInfo.data)
+								headerStr = String.fromCharCode.apply(null, headerInfo.data.subarray(0, headerInfo.length))
 								headerArr = headerStr.split('\r\n')
 								requestLine = headerArr[0].split(/\s+/)
 
