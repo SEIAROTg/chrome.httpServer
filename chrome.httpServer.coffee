@@ -143,10 +143,10 @@ class _http_response
 				headerStr = headerStr.concat key + ': ' + value + '\r\n'
 			headerStr = headerStr.concat '\r\n'
 			
-			chrome.sockets.tcp.send _this.socketId, headerStr, () ->
+			chrome.sockets.tcp.send _this.socketId, headerStr, (sendInfo) ->
 				headWritten = true
 				if callback?
-					callback()
+					callback sendInfo
 
 	write: (data, callback) ->
 		if not headWritten
