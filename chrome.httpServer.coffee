@@ -143,7 +143,7 @@ class _http_response
 				headerStr = headerStr.concat key + ': ' + value + '\r\n'
 			headerStr = headerStr.concat '\r\n'
 			
-			chrome.sockets.tcp.send @socketId, headerStr, () ->
+			chrome.sockets.tcp.send _this.socketId, headerStr, () ->
 				headWritten = true
 				if callback?
 					callback()
@@ -151,15 +151,15 @@ class _http_response
 	write: (data, callback) ->
 		if not headWritten
 			headWritten = true
-		chrome.sockets.tcp.send @socketId, data, callback
+		chrome.sockets.tcp.send _this.socketId, data, callback
 
 	end: (data) ->
 		if data?
-			@write data, () ->
+			_this.write data, () ->
 				_this.end()
 		else
-			chrome.sockets.tcp.close @socketId
-			chrome.sockets.tcp.onReceive.removeListener @onReceive
+			chrome.sockets.tcp.close _this.socketId
+			chrome.sockets.tcp.onReceive.removeListener _this.onReceive
 
 
 class _chrome_httpServer
