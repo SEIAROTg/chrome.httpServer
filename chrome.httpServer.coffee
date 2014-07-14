@@ -178,6 +178,10 @@ class _chrome_httpServer
 
 			req = new _http_request()
 
+			error = (statusCode) ->
+				chrome.sockets.tcp.send socketId, "HTTP/1.1 #{statusCode} #{REASON_PHRASE[statusCode]}", () ->
+					chrome.sockets.tcp.close socketId
+
 			onData = (data) ->
 				ctl = parseInt req.header['Content-Length']
 				len = data.byteLength
@@ -230,8 +234,7 @@ class _chrome_httpServer
 								req.header = header
 
 								if message.method == 'POST' and not req.header['Content-Length']?
-									chrome.sockets.tcp.send socketId, 'HTTP/1.1 400 Bad Request', () ->
-										chrome.sockets.tcp.close socketId
+									error 400
 
 								res = new _http_response(socketId, onReceive)
 								
@@ -246,8 +249,7 @@ class _chrome_httpServer
 								++headerInfo.offset
 
 						if headerInfo.offset == HEADER_MAX_LEN
-							chrome.sockets.tcp.send socketId, 'HTTP/1.1 413 Entity Too Large', () ->
-								chrome.sockets.tcp.close socketId
+							error 413
 					else # headerInfo.length != 0
 						onData info.data
 
