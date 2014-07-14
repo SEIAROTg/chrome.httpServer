@@ -150,8 +150,10 @@ class _http_response
 
 	write: (data, callback) ->
 		if not headWritten
-			headWritten = true
-		chrome.sockets.tcp.send _this.socketId, data, callback
+			_this.writeHead 200, {}, () ->
+				chrome.sockets.tcp.send _this.socketId, data, callback
+		else
+			chrome.sockets.tcp.send _this.socketId, data, callback
 
 	end: (data) ->
 		if data?
