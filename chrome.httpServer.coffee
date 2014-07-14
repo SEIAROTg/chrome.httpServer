@@ -148,12 +148,28 @@ class _http_response
 				if callback?
 					callback sendInfo
 
+	writeHeadPromise: (statusCode, header, reasonPhrase) ->
+		return new Promise (resolve, reject) ->
+			_this.writeHead statusCode, header, reasonPhrase, (sendInfo) ->
+				if sendInfo.resultCode < 0
+					reject sendInfo
+				else
+					resolve sendInfo
+
 	write: (data, callback) ->
 		if not headWritten
 			_this.writeHead 200, {}, () ->
 				chrome.sockets.tcp.send _this.socketId, data, callback
 		else
 			chrome.sockets.tcp.send _this.socketId, data, callback
+
+	writePromise: (data) ->
+		return new Promise (resolve, reject) ->
+			_this.write data, (sendInfo) ->
+				if sendInfo.result < 0
+					reject sendInfo
+				else
+					resolve sendInfo
 
 	end: (data) ->
 		if data?
