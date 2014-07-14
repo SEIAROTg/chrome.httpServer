@@ -112,6 +112,10 @@ class _http_request
 
 	onData: (data) ->
 
+	onEnd: (data) ->
+
+	length: 0
+
 
 class _http_response
 
@@ -174,6 +178,17 @@ class _chrome_httpServer
 
 			req = new _http_request()
 
+			onData = (data) ->
+				ctl = parseInt req.header['Content-Length']
+				len = data.byteLength
+				if req.length + len > ctl
+					onData data.slice(0, ctl - req.length)
+				else
+					req.length += data.byteLength
+					req.onData data
+					if req.length == ctl
+						req.onEnd()
+
 			onReceive = (info) ->
 				if info.socketId == socketId
 
@@ -200,8 +215,8 @@ class _chrome_httpServer
 
 								nHeader = headerArr.length - 1
 								header = {}
-								for i in [1..nHeader]
-									entry = headerArr[i].split(':')
+								for j in [1..nHeader]
+									entry = headerArr[j].split(':')
 									key = entry[0].trim()
 									value = entry[1].trim()
 									header[key] = value
@@ -214,12 +229,17 @@ class _chrome_httpServer
 								req.message = message
 								req.header = header
 
+								if message.method == 'POST' and not req.header['Content-Length']?
+									chrome.sockets.tcp.send socketId, 'HTTP/1.1 400 Bad Request', () ->
+										chrome.sockets.tcp.close socketId
+
 								res = new _http_response(socketId, onReceive)
 								
 								callback(req, res)
 
 								if i + HEADER_END_LEN <= len
-									req.onData data.subarray(i + HEADER_END_LEN).buffer
+									onData data.buffer.slice(i + HEADER_END_LEN)
+
 								break
 							else
 								headerInfo.data[headerInfo.offset] = data[i]
@@ -229,7 +249,7 @@ class _chrome_httpServer
 							chrome.sockets.tcp.send socketId, 'HTTP/1.1 413 Entity Too Large', () ->
 								chrome.sockets.tcp.close socketId
 					else # headerInfo.length != 0
-						req.onData info.data
+						onData info.data
 
 			chrome.sockets.tcp.onReceive.addListener onReceive
 			chrome.sockets.tcp.setPaused socketId, false
