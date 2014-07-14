@@ -205,7 +205,7 @@ class _chrome_httpServer
 						if len0 < len1
 							len = len0
 						else 
-							len = len1 + 1
+							len = len1
 						
 						for i in [0..len-1]
 							
