@@ -134,7 +134,7 @@ class _http_response
 				callback = reasonPhrase
 				reasonPhrase = null
 			if not reasonPhrase?
-				if statusCode in REASON_PHRASE
+				if statusCode of REASON_PHRASE
 					reasonPhrase = REASON_PHRASE[statusCode]
 				else
 					reasonPhrase = ''
