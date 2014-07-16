@@ -183,9 +183,10 @@ class _http_response
 class _chrome_httpServer
 
 	callback = null
+	_this = {}
 
 	onAccept = (info) ->
-		if info.socketId == @socketId
+		if info.socketId == _this.socketId
 
 			socketId = info.clientSocketId
 
@@ -279,16 +280,21 @@ class _chrome_httpServer
 	#     function(request, response) {...}
 	constructor: (_callback) ->
 		callback = _callback
+		_this = this
 
 	listen: (port, addr = '0.0.0.0') ->
 		createSocket()
 		.then (sckListen) ->
-			@socketId = sckListen.socketId
-			return listen @socketId, addr, port
+			_this.socketId = sckListen.socketId
+			return listen _this.socketId, addr, port
 		.then (ret) ->
 				chrome.sockets.tcpServer.onAccept.addListener onAccept
 			, (ret) ->
 				return false
+
+	close: (callback=()->) ->
+		console.log _this.socketId
+		chrome.sockets.tcpServer.close _this.socketId, callback
 
 
 chrome.httpServer = _chrome_httpServer
