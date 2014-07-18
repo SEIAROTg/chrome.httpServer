@@ -239,9 +239,9 @@ class _chrome_httpServer
 								nHeader = headerArr.length - 1
 								header = {}
 								for j in [1..nHeader]
-									entry = headerArr[j].split(':')
-									key = entry[0].trim()
-									value = entry[1].trim()
+									p = headerArr[j].indexOf ':'
+									key = headerArr[j].substr(0, p).trim()
+									value = headerArr[j].substr(p + 1).trim()
 									header[key] = value
 
 								message =
