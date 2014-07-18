@@ -259,7 +259,7 @@ class _chrome_httpServer
 								
 								callback(req, res)
 
-								if i + HEADER_END_LEN <= len
+								if i + HEADER_END_LEN < len
 									onData data.buffer.slice(i + HEADER_END_LEN)
 
 								break
