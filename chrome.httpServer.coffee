@@ -62,6 +62,7 @@ REASON_PHRASE =
 	511 : 'Network Authentication Required' # RFC 6585
 
 
+# return a Promise to create a new socket
 createSocket = () ->
 
 	return new Promise (resolve, reject) ->
@@ -69,6 +70,7 @@ createSocket = () ->
 			resolve socketInfo
 
 
+# return a Promise for socket listening
 listen = (socketId, addr, port) ->
 
 	return new Promise (resolve, reject) ->
@@ -81,12 +83,14 @@ listen = (socketId, addr, port) ->
 
 # add string support for chrome.sockets.tcp.send
 _send = chrome.sockets.tcp.send
+
 chrome.sockets.tcp.send = (socketId, data, callback=()->) ->
+
 	if typeof data == 'string' # if data is string, convert it to ArrayBuffer
 		blob = new Blob [data]
 		fileReader = new FileReader()
 		fileReader.onload = () ->
-			_send socketId, this.result, callback
+			_send socketId, @result, callback
 		fileReader.readAsArrayBuffer blob
 	else
 		_send socketId, data, callback
@@ -108,193 +112,233 @@ compare = (A, B, offsetA, offsetB, len) ->
 	return true
 
 
+# parse HTTP Request header
+parseRequestHeader = (headerStr) ->
+
+	result =
+		header: {}
+
+	headerArr = headerStr.split('\r\n')
+	requestLine = headerArr[0].split(/\s+/)
+
+	nHeader = headerArr.length - 1
+
+	for j in [1..nHeader]
+		p = headerArr[j].indexOf ':'
+		key = headerArr[j].substr(0, p).trim()
+		value = headerArr[j].substr(p + 1).trim()
+		result.header[key] = value
+
+	result.message =
+		method: requestLine[0]
+		url: requestLine[1]
+		version: requestLine[2]
+
+	return result
+
+
+# build HTTP Response header string
+buildResponseHeader = (statusCode, header, reasonPhrase) ->
+
+	if not reasonPhrase?
+		if statusCode of REASON_PHRASE
+			reasonPhrase = REASON_PHRASE[statusCode]
+		else
+			reasonPhrase = ''
+
+	headerStr = "HTTP/1.1 #{statusCode} #{reasonPhrase}\r\n"
+	for key, value of header
+		headerStr += "#{key}: #{value}\r\n"
+	headerStr += '\r\n'
+
+	return headerStr
+
+
 class _http_request
 
-	onData: (data) ->
+	constructor: (headerStr) ->
 
-	onEnd: (data) ->
+		header = parseRequestHeader headerStr
+		@header = header.header
+		@message = header.message
 
-	length: 0
+		if @message.method == 'POST' and not @header['Content-Length']?
+			throw Error 'Content-Length not specified'
+
+		@length = 0
+		@onData = (data) ->
+		@onEnd = (data) ->
 
 
 class _http_response
 
-	headWritten = false
-	_this = {}
+	constructor: (@socketId, @onReceiveHandler) ->
 
-	constructor: (@socketId, @onReceive) ->
-		_this = this
-		headWritten = false
+		@headWritten = false
 
 	writeHead: (statusCode, header, reasonPhrase, callback) ->
-		if headWritten
+
+		if @headWritten
 			throw Error "HTTP header has already been written"
-		else
-			if typeof reasonPhrase == 'function'
-				callback = reasonPhrase
-				reasonPhrase = null
-			if not reasonPhrase?
-				if statusCode of REASON_PHRASE
-					reasonPhrase = REASON_PHRASE[statusCode]
-				else
-					reasonPhrase = ''
-			headerStr = 'HTTP/1.1 ' + statusCode + ' ' + reasonPhrase + '\r\n'
-			for key, value of header
-				headerStr = headerStr.concat key + ': ' + value + '\r\n'
-			headerStr = headerStr.concat '\r\n'
-			
-			chrome.sockets.tcp.send _this.socketId, headerStr, (sendInfo) ->
-				headWritten = true
-				if callback?
-					callback sendInfo
+
+		if typeof reasonPhrase == 'function'
+			callback = reasonPhrase
+			reasonPhrase = null
+
+		headerStr = buildResponseHeader statusCode, header, reasonPhrase
+
+		chrome.sockets.tcp.send @socketId, headerStr, ((sendInfo) ->
+			@headWritten = true
+			if callback?
+				callback sendInfo
+		).bind @
 
 	writeHeadPromise: (statusCode, header, reasonPhrase) ->
-		return new Promise (resolve, reject) ->
-			_this.writeHead statusCode, header, reasonPhrase, (sendInfo) ->
+
+		return new Promise ((resolve, reject) ->
+			@writeHead statusCode, header, reasonPhrase, (sendInfo) ->
 				if sendInfo.resultCode < 0
 					reject sendInfo
 				else
 					resolve sendInfo
+		).bind @
 
 	write: (data, callback) ->
-		if not headWritten
-			_this.writeHead 200, {}, () ->
-				chrome.sockets.tcp.send _this.socketId, data, callback
+
+		if not @headWritten
+			@writeHead 200, {}, (() ->
+				chrome.sockets.tcp.send @socketId, data, callback.bind(@)
+		).bind @
 		else
-			chrome.sockets.tcp.send _this.socketId, data, callback
+			chrome.sockets.tcp.send @socketId, data, callback.bind(@)
 
 	writePromise: (data) ->
-		return new Promise (resolve, reject) ->
-			_this.write data, (sendInfo) ->
+
+		return new Promise ((resolve, reject) ->
+			@write data, (sendInfo) ->
 				if sendInfo.result < 0
 					reject sendInfo
 				else
 					resolve sendInfo
+		).bind @
 
 	end: (data) ->
+
 		if data?
-			_this.write data, () ->
-				_this.end()
+			@write data, (() ->
+				@end()
+			).bind @
 		else
-			chrome.sockets.tcp.close _this.socketId
-			chrome.sockets.tcp.onReceive.removeListener _this.onReceive
+			chrome.sockets.tcp.close @socketId
+			chrome.sockets.tcp.onReceive.removeListener @onReceiveHandler
+
+
+class _http_session
+
+	constructor: (@socketId, @callback) ->
+
+		@headerInfo =
+			data: new Uint8Array HEADER_MAX_LEN
+			offset: 0
+			length: 0
+		@onReceiveHandler = @onReceive.bind @
+		chrome.sockets.tcp.onReceive.addListener @onReceiveHandler
+		chrome.sockets.tcp.onReceiveError.addListener @onReceiveError
+
+	onReceive: (info) ->
+
+		if info.socketId != @socketId
+			return
+
+		if @headerInfo.length != 0
+			@onData info.data
+		else
+			data = new Uint8Array info.data
+
+			len = Math.min data.length, HEADER_MAX_LEN - @headerInfo.offset
+			
+			for i in [0..len-1]
+				
+				if compare(data, HEADER_END, i, 0, HEADER_END_LEN) # header ends
+					
+					@headerInfo.length = @headerInfo.offset
+					headerStr = String.fromCharCode.apply(null, @headerInfo.data.subarray(0, @headerInfo.length))
+
+					try
+						@req = new _http_request headerStr
+					catch
+						@error 400
+						return
+					@res = new _http_response(@socketId, @onReceiveHandler)
+
+					@callback @req, @res
+
+					if i + HEADER_END_LEN < len
+						@onData data.buffer.slice(i + HEADER_END_LEN)
+
+					break
+
+				else
+					@headerInfo.data[@headerInfo.offset] = data[i]
+					++@headerInfo.offset
+
+			if @headerInfo.offset == HEADER_MAX_LEN
+				error 413
+
+	onReceiveError: () ->
+
+		@res.onError.bind(@res)() if @res?
+
+	error: (statusCode) ->
+
+		chrome.sockets.tcp.send @socketId, "HTTP/1.1 #{statusCode} #{REASON_PHRASE[statusCode]}", (() ->
+			chrome.sockets.tcp.close @socketId
+		).bind @
+
+	onData: (data) ->
+
+		contentLength = parseInt @req.header['Content-Length']
+		len = data.byteLength
+		if @req.length + len > contentLength
+			@onData data.slice(0, contentLength - @req.length)
+		else
+			@req.length += data.byteLength
+			@req.onData data
+			if @req.length == contentLength
+				@req.onEnd()
 
 
 class _chrome_httpServer
 
-	callback = null
-	_this = {}
-
-	onAccept = (info) ->
-		if info.socketId == _this.socketId
-
-			socketId = info.clientSocketId
-
-			headerInfo =
-				data: new Uint8Array HEADER_MAX_LEN
-				offset: 0
-				length: 0
-
-			req = new _http_request()
-
-			error = (statusCode) ->
-				chrome.sockets.tcp.send socketId, "HTTP/1.1 #{statusCode} #{REASON_PHRASE[statusCode]}", () ->
-					chrome.sockets.tcp.close socketId
-
-			onData = (data) ->
-				ctl = parseInt req.header['Content-Length']
-				len = data.byteLength
-				if req.length + len > ctl
-					onData data.slice(0, ctl - req.length)
-				else
-					req.length += data.byteLength
-					req.onData data
-					if req.length == ctl
-						req.onEnd()
-
-			onReceive = (info) ->
-				if info.socketId == socketId
-
-					if headerInfo.length == 0
-
-						data = new Uint8Array info.data
-
-						len0 = data.length
-						len1 = HEADER_MAX_LEN - headerInfo.offset
-						if len0 < len1
-							len = len0
-						else 
-							len = len1
-						
-						for i in [0..len-1]
-							
-							if compare(data, HEADER_END, i, 0, HEADER_END_LEN) # header ends
-								
-								headerInfo.length = headerInfo.offset
-
-								headerStr = String.fromCharCode.apply(null, headerInfo.data.subarray(0, headerInfo.length))
-								headerArr = headerStr.split('\r\n')
-								requestLine = headerArr[0].split(/\s+/)
-
-								nHeader = headerArr.length - 1
-								header = {}
-								for j in [1..nHeader]
-									p = headerArr[j].indexOf ':'
-									key = headerArr[j].substr(0, p).trim()
-									value = headerArr[j].substr(p + 1).trim()
-									header[key] = value
-
-								message =
-									method: requestLine[0]
-									url: requestLine[1]
-									version: requestLine[2]
-
-								req.message = message
-								req.header = header
-
-								if message.method == 'POST' and not req.header['Content-Length']?
-									error 400
-
-								res = new _http_response(socketId, onReceive)
-								
-								callback(req, res)
-
-								if i + HEADER_END_LEN < len
-									onData data.buffer.slice(i + HEADER_END_LEN)
-
-								break
-							else
-								headerInfo.data[headerInfo.offset] = data[i]
-								++headerInfo.offset
-
-						if headerInfo.offset == HEADER_MAX_LEN
-							error 413
-					else # headerInfo.length != 0
-						onData info.data
-
-			chrome.sockets.tcp.onReceive.addListener onReceive
-			chrome.sockets.tcp.setPaused socketId, false
-
-
 	# callback should be like
 	#     function(request, response) {...}
-	constructor: (_callback) ->
-		callback = _callback
-		_this = this
+	constructor: (@callback) ->
+
+	onAccept: (info) ->
+
+		if info.socketId != @socketId
+			return
+		session = new _http_session info.clientSocketId, @callback
+		chrome.sockets.tcp.setPaused info.clientSocketId, false
 
 	listen: (port, addr = '0.0.0.0') ->
-		createSocket()
-		.then (sckListen) ->
-			_this.socketId = sckListen.socketId
-			return listen _this.socketId, addr, port
-		.then (ret) ->
-				chrome.sockets.tcpServer.onAccept.addListener onAccept
-			, (ret) ->
-				return false
+
+		return new Promise ((resolve, reject) ->
+			createSocket()
+			.then ((sckListen) ->
+				@socketId = sckListen.socketId
+				return listen @socketId, addr, port
+			).bind @
+			.then ((ret) ->
+				chrome.sockets.tcpServer.onAccept.addListener @onAccept.bind(@)
+				resolve()
+			).bind @
+			.then null, reject
+		).bind @
 
 	close: (callback=()->) ->
-		console.log _this.socketId
-		chrome.sockets.tcpServer.close _this.socketId, callback
+
+		chrome.sockets.tcpServer.close @socketId, callback
 
 
 chrome.httpServer = _chrome_httpServer
